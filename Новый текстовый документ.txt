@@ -1,0 +1,2689 @@
+index.html
+
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b5fff" />
+  <title>Incident Analytics Dashboard</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/styles.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <script src="js/utils.js" defer></script>
+  <script src="js/dataService.js" defer></script>
+  <script src="js/analytics.js" defer></script>
+  <script src="js/charts.js" defer></script>
+  <script src="js/export.js" defer></script>
+  <script src="js/ui.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/logo.svg" alt="Logo" class="brand__logo" />
+        <div class="brand__text">
+          <h1>Incident Analytics Dashboard</h1>
+          <p>Daily operational control across Ozon facilities</p>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        <button class="btn btn--ghost" id="btnSource" type="button">Источник</button>
+        <button class="btn btn--ghost" id="btnRefresh" type="button">Обновить</button>
+        <button class="btn btn--primary" id="btnExportExcel" type="button">Export Excel</button>
+        <button class="btn btn--primary" id="btnExportPDF" type="button">Export PDF</button>
+      </div>
+    </header>
+
+    <section class="toolbar card">
+      <div class="toolbar__row">
+        <label class="field field--search">
+          <span class="field__label">Search</span>
+          <input id="searchInput" type="search" placeholder="Object / comment / audit number / incident type" autocomplete="off" />
+        </label>
+
+        <div class="field">
+          <span class="field__label">By object</span>
+          <input id="objectInput" type="text" list="objectsList" placeholder="Type object name" autocomplete="off" />
+          <datalist id="objectsList"></datalist>
+        </div>
+
+        <div class="field">
+          <span class="field__label">By risk</span>
+          <div class="chip-group" id="riskFilters">
+            <button class="chip chip--active" data-risk="all" type="button">All</button>
+            <button class="chip" data-risk="green" type="button">Green</button>
+            <button class="chip" data-risk="yellow" type="button">Yellow</button>
+            <button class="chip" data-risk="red" type="button">Red</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar__row toolbar__row--bottom">
+        <div class="field">
+          <span class="field__label">By period</span>
+          <div class="chip-group" id="periodPresets">
+            <button class="chip chip--active" data-period="today" type="button">Today</button>
+            <button class="chip" data-period="week" type="button">Week</button>
+            <button class="chip" data-period="month" type="button">Month</button>
+            <button class="chip" data-period="custom" type="button">Custom period</button>
+          </div>
+        </div>
+
+        <div class="field field--dates" id="customDates">
+          <span class="field__label">Custom period</span>
+          <div class="dates">
+            <input id="startDate" type="date" />
+            <span class="dates__sep">—</span>
+            <input id="endDate" type="date" />
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">By incident type</span>
+          <div class="chip-group" id="typeFilters">
+            <button class="chip chip--active" data-type="all" type="button">All</button>
+            <button class="chip" data-type="Невыход на работу" type="button">Невыход</button>
+            <button class="chip" data-type="Менеджер не посещал объект более 7 дней" type="button">&gt;7 дней</button>
+            <button class="chip" data-type="Качество уборки" type="button">Качество</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="kpis" id="kpiGrid"></section>
+
+    <section class="charts-grid">
+      <article class="card chart-card">
+        <div class="card__header">
+          <h2>Daily incidents</h2>
+        </div>
+        <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
+      </article>
+
+      <article class="card chart-card">
+        <div class="card__header">
+          <h2>Weekly incidents</h2>
+        </div>
+        <div class="chart-wrap"><canvas id="weeklyChart"></canvas></div>
+      </article>
+
+      <article class="card chart-card">
+        <div class="card__header">
+          <h2>Monthly incidents</h2>
+        </div>
+        <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
+      </article>
+
+      <article class="card chart-card">
+        <div class="card__header">
+          <h2>Distribution by incident type</h2>
+        </div>
+        <div class="chart-wrap"><canvas id="distributionChart"></canvas></div>
+      </article>
+
+      <article class="card chart-card chart-card--wide">
+        <div class="card__header">
+          <h2>Top problematic objects</h2>
+        </div>
+        <div class="chart-wrap chart-wrap--wide"><canvas id="objectsChart"></canvas></div>
+      </article>
+    </section>
+
+    <section class="card table-card">
+      <div class="card__header card__header--table">
+        <div>
+          <h2>Objects</h2>
+          <p id="tableMeta" class="muted"></p>
+        </div>
+        <div class="table-controls">
+          <label class="field field--compact">
+            <span class="field__label">Rows</span>
+            <select id="pageSize">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-sort="object">Object <span class="sort-indicator"></span></th>
+              <th data-sort="type1">Невыход <span class="sort-indicator"></span></th>
+              <th data-sort="type2">&gt;7 дней <span class="sort-indicator"></span></th>
+              <th data-sort="type3">Качество <span class="sort-indicator"></span></th>
+              <th data-sort="total">Total <span class="sort-indicator"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <button class="btn btn--ghost btn--sm" id="prevPage" type="button">Prev</button>
+        <div class="pagination__info" id="paginationInfo"></div>
+        <button class="btn btn--ghost btn--sm" id="nextPage" type="button">Next</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal" id="detailsModal" aria-hidden="true">
+    <div class="modal__overlay" data-close-modal></div>
+    <div class="modal__panel">
+      <div class="modal__header">
+        <div>
+          <h3 id="modalTitle">Object details</h3>
+          <p id="modalSubtitle" class="muted"></p>
+        </div>
+        <button class="icon-btn" data-close-modal type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal__body">
+        <div class="details-summary" id="detailsSummary"></div>
+        <div class="table-wrap table-wrap--modal">
+          <table class="data-table data-table--details">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Incident type</th>
+                <th>Comment</th>
+                <th>Audit number</th>
+              </tr>
+            </thead>
+            <tbody id="detailsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="sourceModal" aria-hidden="true">
+    <div class="modal__overlay" data-close-source></div>
+    <div class="modal__panel modal__panel--narrow">
+      <div class="modal__header">
+        <div>
+          <h3>Google Sheets source</h3>
+          <p class="muted">Published CSV URL</p>
+        </div>
+        <button class="icon-btn" data-close-source type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal__body">
+        <label class="field">
+          <span class="field__label">CSV URL</span>
+          <input id="sheetUrlInput" type="url" spellcheck="false" autocomplete="off" />
+        </label>
+        <div class="modal__actions">
+          <button class="btn btn--ghost" id="btnClearSource" type="button">Use demo data</button>
+          <button class="btn btn--primary" id="btnSaveSource" type="button">Save & Reload</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loadingLayer" aria-hidden="true">
+    <div class="loading__card">
+      <div class="spinner"></div>
+      <p id="loadingText">Loading data…</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</body>
+</html>
+
+css/styles.css
+
+:root{
+  --bg:#f3f6fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#64748b;
+  --line:#d9e2f2;
+  --brand:#0b5fff;
+  --brand-2:#174ea6;
+  --green:#16a34a;
+  --yellow:#d97706;
+  --red:#dc2626;
+  --shadow:0 10px 30px rgba(15,23,42,.08);
+  --radius:18px;
+  --radius-sm:12px;
+  --gap:16px;
+  --table-head:#f8fbff;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(11,95,255,.10), transparent 50%),
+    radial-gradient(900px 480px at 90% 0%, rgba(22,163,74,.08), transparent 45%),
+    var(--bg);
+}
+
+button,input,select{
+  font:inherit
+}
+
+img{display:block;max-width:100%}
+
+.app-shell{
+  width:min(1600px, calc(100% - 32px));
+  margin:16px auto 32px;
+  display:flex;
+  flex-direction:column;
+  gap:var(--gap);
+}
+
+.topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+  padding:16px 18px;
+  background:rgba(255,255,255,.86);
+  backdrop-filter:blur(16px);
+  border:1px solid rgba(217,226,242,.8);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+
+.brand__logo{
+  width:52px;
+  height:52px;
+  flex:0 0 auto;
+}
+
+.brand__text h1{
+  margin:0;
+  font-size:20px;
+  line-height:1.2;
+  letter-spacing:-.02em;
+}
+
+.brand__text p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.topbar__actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.card{
+  background:rgba(255,255,255,.96);
+  border:1px solid rgba(217,226,242,.82);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+
+.toolbar{
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.toolbar__row{
+  display:grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap:14px;
+  align-items:end;
+}
+
+.toolbar__row--bottom{
+  grid-template-columns: 1.2fr 1fr 1.4fr;
+}
+
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.field__label{
+  font-size:12px;
+  color:var(--muted);
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+
+.field input,
+.field select{
+  width:100%;
+  padding:12px 14px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  color:var(--text);
+  outline:none;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+
+.field input:focus,
+.field select:focus{
+  border-color:rgba(11,95,255,.6);
+  box-shadow:0 0 0 4px rgba(11,95,255,.10);
+}
+
+.field--search input{
+  padding-left:16px;
+}
+
+.field--compact{
+  min-width:110px;
+}
+
+.field--dates{
+  align-self:start;
+}
+
+.dates{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.dates__sep{
+  color:var(--muted);
+}
+
+.chip-group{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.chip{
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--text);
+  padding:10px 12px;
+  border-radius:999px;
+  cursor:pointer;
+  transition:.15s ease;
+  font-weight:600;
+  line-height:1;
+}
+
+.chip:hover{
+  border-color:rgba(11,95,255,.35);
+  box-shadow:0 4px 12px rgba(11,95,255,.08);
+}
+
+.chip--active{
+  background:linear-gradient(180deg, rgba(11,95,255,.12), rgba(11,95,255,.06));
+  border-color:rgba(11,95,255,.35);
+  color:var(--brand-2);
+}
+
+.kpis{
+  display:grid;
+  grid-template-columns:repeat(5, 1fr);
+  gap:var(--gap);
+}
+
+.kpi{
+  padding:18px;
+  border-radius:var(--radius);
+  background:rgba(255,255,255,.96);
+  border:1px solid rgba(217,226,242,.82);
+  box-shadow:var(--shadow);
+  position:relative;
+  overflow:hidden;
+}
+
+.kpi::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(135deg, rgba(11,95,255,.06), transparent 38%);
+  pointer-events:none;
+}
+
+.kpi__label{
+  color:var(--muted);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+
+.kpi__value{
+  margin-top:8px;
+  font-size:30px;
+  font-weight:800;
+  letter-spacing:-.03em;
+}
+
+.kpi__trend{
+  margin-top:8px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+}
+
+.trend--up{background:rgba(22,163,74,.10);color:var(--green)}
+.trend--down{background:rgba(220,38,38,.10);color:var(--red)}
+.trend--flat{background:rgba(100,116,139,.12);color:var(--muted)}
+
+.kpi__sub{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.charts-grid{
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:var(--gap);
+}
+
+.chart-card{
+  padding:16px 16px 10px;
+  min-height:380px;
+  display:flex;
+  flex-direction:column;
+}
+
+.chart-card--wide{
+  grid-column:1 / -1;
+  min-height:420px;
+}
+
+.card__header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.card__header h2{
+  margin:0;
+  font-size:16px;
+  letter-spacing:-.01em;
+}
+
+.card__header p{
+  margin:4px 0 0;
+}
+
+.muted{
+  color:var(--muted);
+}
+
+.chart-wrap{
+  position:relative;
+  flex:1;
+  min-height:300px;
+}
+
+.chart-wrap--wide{
+  min-height:340px;
+}
+
+.table-card{
+  padding:16px;
+}
+
+.card__header--table{
+  margin-bottom:14px;
+}
+
+.table-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.table-wrap{
+  max-height:560px;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:16px;
+}
+
+.data-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  background:#fff;
+}
+
+.data-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:var(--table-head);
+  color:#0f172a;
+  text-align:left;
+  padding:14px 14px;
+  font-size:13px;
+  border-bottom:1px solid var(--line);
+  white-space:nowrap;
+  cursor:pointer;
+  user-select:none;
+}
+
+.data-table thead th:hover{
+  background:#eef5ff;
+}
+
+.sort-indicator{
+  margin-left:6px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.data-table tbody td{
+  padding:14px;
+  border-bottom:1px solid #edf2fb;
+  font-size:14px;
+  vertical-align:top;
+}
+
+.data-table tbody tr{
+  transition:background .15s ease, transform .12s ease;
+}
+
+.data-table tbody tr:hover{
+  background:#f8fbff;
+  cursor:pointer;
+}
+
+.data-table tbody tr.is-risk-green{border-left:4px solid var(--green)}
+.data-table tbody tr.is-risk-yellow{border-left:4px solid var(--yellow)}
+.data-table tbody tr.is-risk-red{border-left:4px solid var(--red)}
+
+.object-cell{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.object-name{
+  font-weight:700;
+  line-height:1.35;
+}
+
+.risk-pill{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.01em;
+}
+
+.risk-pill--green{background:rgba(22,163,74,.12);color:var(--green)}
+.risk-pill--yellow{background:rgba(217,119,6,.13);color:var(--yellow)}
+.risk-pill--red{background:rgba(220,38,38,.12);color:var(--red)}
+
+.pagination{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-top:14px;
+}
+
+.pagination__info{
+  color:var(--muted);
+  font-size:13px;
+}
+
+.btn{
+  border:1px solid transparent;
+  border-radius:12px;
+  padding:12px 14px;
+  cursor:pointer;
+  font-weight:700;
+  transition:.15s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+
+.btn:hover{
+  transform:translateY(-1px);
+}
+
+.btn--primary{
+  background:linear-gradient(180deg, #0b5fff, #0a4fd1);
+  color:#fff;
+  box-shadow:0 10px 20px rgba(11,95,255,.22);
+}
+
+.btn--ghost{
+  background:#fff;
+  border-color:var(--line);
+  color:var(--text);
+}
+
+.btn--sm{
+  padding:10px 12px;
+  border-radius:10px;
+}
+
+.icon-btn{
+  width:38px;
+  height:38px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#fff;
+  cursor:pointer;
+  font-size:24px;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.modal{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.modal.is-open{display:flex}
+
+.modal__overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(15,23,42,.46);
+  backdrop-filter:blur(6px);
+}
+
+.modal__panel{
+  position:relative;
+  width:min(1180px, 100%);
+  max-height:min(88vh, 920px);
+  overflow:hidden;
+  background:#fff;
+  border-radius:24px;
+  box-shadow:0 30px 100px rgba(0,0,0,.25);
+  border:1px solid rgba(255,255,255,.3);
+  display:flex;
+  flex-direction:column;
+}
+
+.modal__panel--narrow{
+  width:min(720px, 100%);
+}
+
+.modal__header{
+  padding:18px 20px;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+}
+
+.modal__header h3{
+  margin:0;
+  font-size:20px;
+  letter-spacing:-.02em;
+}
+
+.modal__header p{
+  margin:6px 0 0;
+}
+
+.modal__body{
+  padding:20px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.modal__actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.details-summary{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:12px;
+}
+
+.details-summary__item{
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#f9fbff;
+}
+
+.details-summary__label{
+  color:var(--muted);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+
+.details-summary__value{
+  margin-top:8px;
+  font-size:20px;
+  font-weight:800;
+}
+
+.table-wrap--modal{
+  max-height:520px;
+}
+
+.data-table--details thead th{
+  cursor:default;
+}
+
+.data-table--details tbody tr:hover{
+  cursor:default;
+  background:#fff;
+}
+
+.loading{
+  position:fixed;
+  inset:0;
+  z-index:200;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(241,245,249,.55);
+  backdrop-filter:blur(2px);
+}
+
+.loading.is-visible{display:flex}
+
+.loading__card{
+  background:#fff;
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  border-radius:20px;
+  padding:22px 24px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  min-width:220px;
+}
+
+.spinner{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  border:4px solid rgba(11,95,255,.16);
+  border-top-color:var(--brand);
+  animation:spin 1s linear infinite;
+}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.toast{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:300;
+  display:grid;
+  gap:10px;
+}
+
+.toast__item{
+  min-width:260px;
+  max-width:420px;
+  padding:14px 16px;
+  border-radius:14px;
+  color:#fff;
+  box-shadow:0 16px 36px rgba(15,23,42,.18);
+  animation:toastIn .22s ease;
+}
+
+.toast__item--success{background:linear-gradient(180deg, #16a34a, #12813c)}
+.toast__item--error{background:linear-gradient(180deg, #dc2626, #b91c1c)}
+.toast__item--info{background:linear-gradient(180deg, #0b5fff, #0a4fd1)}
+
+@keyframes toastIn{
+  from{transform:translateY(12px);opacity:0}
+  to{transform:translateY(0);opacity:1}
+}
+
+@media (max-width: 1320px){
+  .kpis{grid-template-columns:repeat(3, 1fr)}
+  .charts-grid{grid-template-columns:1fr}
+  .chart-card--wide{grid-column:auto}
+  .details-summary{grid-template-columns:repeat(2, 1fr)}
+}
+
+@media (max-width: 980px){
+  .topbar,.toolbar__row,.toolbar__row--bottom{
+    grid-template-columns:1fr;
+    display:grid;
+  }
+  .topbar{
+    justify-content:stretch;
+  }
+  .topbar__actions{
+    justify-content:flex-start;
+  }
+  .kpis{grid-template-columns:repeat(2, 1fr)}
+  .app-shell{width:min(100% - 20px, 1600px); margin:10px auto 22px;}
+  .data-table{
+    min-width:720px;
+  }
+}
+
+@media (max-width: 640px){
+  .brand__text h1{font-size:17px}
+  .kpis{grid-template-columns:1fr}
+  .pagination{flex-direction:column}
+  .pagination__info{text-align:center}
+  .details-summary{grid-template-columns:1fr}
+  .modal{padding:10px}
+  .modal__body,.modal__header{padding:14px}
+  .chart-card{min-height:320px}
+  .chart-wrap,.chart-wrap--wide{min-height:260px}
+}
+
+assets/logo.svg
+
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Incident Analytics Dashboard">
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#0B5FFF"/>
+  <path d="M38 82V46C38 41.5817 41.5817 38 46 38H82C86.4183 38 90 41.5817 90 46V82C90 86.4183 86.4183 90 82 90H46C41.5817 90 38 86.4183 38 82Z" fill="white" opacity="0.16"/>
+  <path d="M46 38H82C86.4183 38 90 41.5817 90 46V82C90 86.4183 86.4183 90 82 90H46C41.5817 90 38 86.4183 38 82V46C38 41.5817 41.5817 38 46 38Z" stroke="white" stroke-width="6"/>
+  <path d="M46 52H82" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <path d="M46 66H66" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <path d="M46 80H74" stroke="#FFC533" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="86" cy="80" r="6" fill="#16A34A"/>
+</svg>
+
+js/utils.js
+
+(function () {
+  const TYPES = [
+    'Невыход на работу',
+    'Менеджер не посещал объект более 7 дней',
+    'Качество уборки'
+  ];
+
+  const RISK_META = {
+    green: { label: 'Green', cls: 'risk-pill--green', rowCls: 'is-risk-green' },
+    yellow: { label: 'Yellow', cls: 'risk-pill--yellow', rowCls: 'is-risk-yellow' },
+    red: { label: 'Red', cls: 'risk-pill--red', rowCls: 'is-risk-red' }
+  };
+
+  const ruDateTime = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+
+  const ruDateLong = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const ruDateTimeFull = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  function normalizeText(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ');
+  }
+
+  function normalizeKey(value) {
+    return normalizeText(value)
+      .replace(/[^\p{L}\p{N}]+/gu, '');
+  }
+
+  function pad2(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  function toIsoDate(value) {
+    if (value == null || value === '') return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      const y = value.getFullYear();
+      const m = pad2(value.getMonth() + 1);
+      const d = pad2(value.getDate());
+      return `${y}-${m}-${d}`;
+    }
+
+    const text = String(value).trim();
+
+    const ddmmyyyy = text.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?/);
+    if (ddmmyyyy) {
+      const day = Number(ddmmyyyy[1]);
+      const month = Number(ddmmyyyy[2]) - 1;
+      let year = Number(ddmmyyyy[3]);
+      if (year < 100) year += year >= 70 ? 1900 : 2000;
+      const date = new Date(year, month, day);
+      if (!Number.isNaN(date.getTime())) return toIsoDate(date);
+    }
+
+    const iso = text.match(/^(\d{4})[.\-/](\d{2})[.\-/](\d{2})(?:[ T].*)?$/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) return toIsoDate(parsed);
+
+    return '';
+  }
+
+  function dateFromIso(iso) {
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+
+  function formatDateShort(iso) {
+    const dt = dateFromIso(iso);
+    return dt ? ruDateTime.format(dt) : '';
+  }
+
+  function formatDateLong(iso) {
+    const dt = dateFromIso(iso);
+    return dt ? ruDateLong.format(dt) : '';
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '';
+    const dt = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(dt.getTime()) ? '' : ruDateTimeFull.format(dt);
+  }
+
+  function formatNumber(value) {
+    return new Intl.NumberFormat('ru-RU').format(Number(value) || 0);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function startOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function endOfDay(date) {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+
+  function addDays(date, amount) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + amount);
+    return d;
+  }
+
+  function toIsoDateFromDate(date) {
+    return toIsoDate(startOfDay(date));
+  }
+
+  function getPeriodRange(preset, customStart, customEnd) {
+    const today = startOfDay(new Date());
+    let start = today;
+    let end = endOfDay(today);
+
+    if (preset === 'today') {
+      start = today;
+      end = endOfDay(today);
+    } else if (preset === 'week') {
+      start = startOfDay(addDays(today, -6));
+      end = endOfDay(today);
+    } else if (preset === 'month') {
+      start = startOfDay(addDays(today, -29));
+      end = endOfDay(today);
+    } else if (preset === 'custom') {
+      const s = customStart ? startOfDay(customStart) : startOfDay(addDays(today, -29));
+      const e = customEnd ? endOfDay(customEnd) : endOfDay(today);
+      start = s <= e ? s : e;
+      end = e >= s ? e : s;
+    }
+
+    return {
+      start,
+      end,
+      startIso: toIsoDateFromDate(start),
+      endIso: toIsoDateFromDate(end)
+    };
+  }
+
+  function previousRange(startIso, endIso) {
+    const start = dateFromIso(startIso);
+    const end = dateFromIso(endIso);
+    if (!start || !end) return null;
+
+    const span = Math.max(1, Math.round((endOfDay(end) - startOfDay(start)) / 86400000) + 1);
+    const prevEnd = addDays(startOfDay(start), -1);
+    const prevStart = addDays(prevEnd, -(span - 1));
+    return {
+      start: prevStart,
+      end: prevEnd,
+      startIso: toIsoDateFromDate(prevStart),
+      endIso: toIsoDateFromDate(prevEnd)
+    };
+  }
+
+  function incidentTypeFromCategory(category) {
+    const raw = normalizeText(category);
+    if (!raw) return '';
+    if (raw === normalizeText(TYPES[0]) || raw.includes('невыход')) return TYPES[0];
+    if (raw === normalizeText(TYPES[1]) || (raw.includes('7') && raw.includes('дн'))) return TYPES[1];
+    if (raw === normalizeText(TYPES[2]) || raw.includes('качество')) return TYPES[2];
+    return '';
+  }
+
+  function typeShortName(type) {
+    if (type === TYPES[0]) return 'Невыход';
+    if (type === TYPES[1]) return '>7 дней';
+    if (type === TYPES[2]) return 'Качество';
+    return type;
+  }
+
+  function riskLevel(count) {
+    const value = Number(count) || 0;
+    if (value >= 6) return { key: 'red', ...RISK_META.red };
+    if (value >= 3) return { key: 'yellow', ...RISK_META.yellow };
+    return { key: 'green', ...RISK_META.green };
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function debounce(fn, delay = 250) {
+    let timer = null;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delay);
+    };
+  }
+
+  function isoInRange(iso, startIso, endIso) {
+    if (!iso) return false;
+    return iso >= startIso && iso <= endIso;
+  }
+
+  function getWeekKey(iso) {
+    const d = dateFromIso(iso);
+    if (!d) return '';
+    const dt = startOfDay(d);
+    const day = (dt.getDay() + 6) % 7;
+    dt.setDate(dt.getDate() - day);
+    return toIsoDateFromDate(dt);
+  }
+
+  function getMonthKey(iso) {
+    if (!iso) return '';
+    return iso.slice(0, 7);
+  }
+
+  function getDateLabelFromIso(iso) {
+    const d = dateFromIso(iso);
+    return d ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short' }).format(d) : iso;
+  }
+
+  function getMonthLabel(monthKey) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m - 1, 1);
+    return d.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' });
+  }
+
+  window.IncidentUtils = {
+    TYPES,
+    normalizeText,
+    normalizeKey,
+    toIsoDate,
+    toIsoDateFromDate,
+    dateFromIso,
+    formatDateShort,
+    formatDateLong,
+    formatDateTime,
+    formatNumber,
+    escapeHtml,
+    startOfDay,
+    endOfDay,
+    addDays,
+    getPeriodRange,
+    previousRange,
+    incidentTypeFromCategory,
+    typeShortName,
+    riskLevel,
+    clamp,
+    debounce,
+    isoInRange,
+    getWeekKey,
+    getMonthKey,
+    getDateLabelFromIso,
+    getMonthLabel
+  };
+})();
+
+js/dataService.js
+
+(function () {
+  const U = window.IncidentUtils;
+
+  const STORAGE_KEYS = {
+    sheetUrl: 'incident_dashboard_sheet_url',
+    cachedRows: 'incident_dashboard_cached_rows',
+    cachedSource: 'incident_dashboard_cached_source',
+    lastSync: 'incident_dashboard_last_sync'
+  };
+
+  function makeDateOffset(daysAgo) {
+    const d = new Date();
+    d.setHours(10, 0, 0, 0);
+    d.setDate(d.getDate() - daysAgo);
+    return U.toIsoDate(d);
+  }
+
+  function buildDemoRows() {
+    const base = [
+      [0, 'Фулфилмент-1', 'Невыход на работу', 'Сотрудник не вышел в смену', 'A-10001'],
+      [1, 'Фулфилмент-1', 'Качество уборки', 'Пыль в зоне отгрузки', 'A-10002'],
+      [2, 'Фулфилмент-2', 'Менеджер не посещал объект более 7 дней', 'Отсутствие визита 8 дней', 'A-10003'],
+      [2, 'Фулфилмент-3', 'Качество уборки', 'Некачественная уборка санзоны', 'A-10004'],
+      [3, 'Фулфилмент-2', 'Невыход на работу', 'Не вышел старший смены', 'A-10005'],
+      [4, 'Сортировочный центр-1', 'Качество уборки', 'Скопление мусора у рампы', 'A-10006'],
+      [5, 'Сортировочный центр-1', 'Менеджер не посещал объект более 7 дней', 'Нет контроля более недели', 'A-10007'],
+      [6, 'Фулфилмент-4', 'Качество уборки', 'Полы после уборки скользкие', 'A-10008'],
+      [7, 'Фулфилмент-5', 'Невыход на работу', 'Смена закрыта с опозданием', 'A-10009'],
+      [8, 'Фулфилмент-3', 'Менеджер не посещал объект более 7 дней', 'Плановый визит не выполнен', 'A-10010'],
+      [9, 'Сортировочный центр-2', 'Качество уборки', 'Влажная уборка пропущена', 'A-10011'],
+      [10, 'Фулфилмент-6', 'Невыход на работу', 'Нет оператора участка', 'A-10012'],
+      [12, 'Фулфилмент-1', 'Менеджер не посещал объект более 7 дней', 'Последний визит был 9 дней назад', 'A-10013'],
+      [12, 'Сортировочный центр-3', 'Качество уборки', 'Нарушение графика уборки', 'A-10014'],
+      [13, 'Фулфилмент-4', 'Качество уборки', 'Пыль на стеллажах', 'A-10015'],
+      [14, 'Фулфилмент-2', 'Невыход на работу', 'Отсутствие ночной смены', 'A-10016'],
+      [15, 'Сортировочный центр-2', 'Менеджер не посещал объект более 7 дней', 'Не был на объекте 10 дней', 'A-10017'],
+      [16, 'Фулфилмент-5', 'Качество уборки', 'Не убраны проходы', 'A-10018'],
+      [17, 'Фулфилмент-6', 'Невыход на работу', 'Бригадир не вышел', 'A-10019'],
+      [18, 'Фулфилмент-3', 'Качество уборки', 'Замечания по санитарной зоне', 'A-10020'],
+      [19, 'Сортировочный центр-1', 'Невыход на работу', 'Смена недоукомплектована', 'A-10021'],
+      [20, 'Сортировочный центр-3', 'Менеджер не посещал объект более 7 дней', 'Не было визита 8 дней', 'A-10022'],
+      [21, 'Фулфилмент-1', 'Качество уборки', 'Пропуск уборки в зоне упаковки', 'A-10023'],
+      [22, 'Фулфилмент-2', 'Качество уборки', 'Загрязнение в коридоре', 'A-10024'],
+      [24, 'Фулфилмент-4', 'Невыход на работу', 'Нет комплектовщика', 'A-10025'],
+      [25, 'Фулфилмент-5', 'Менеджер не посещал объект более 7 дней', 'Отсутствие регулярного контроля', 'A-10026'],
+      [26, 'Фулфилмент-6', 'Качество уборки', 'Пыль и мусор у доков', 'A-10027'],
+      [27, 'Сортировочный центр-2', 'Невыход на работу', 'Сотрудник не вышел на линию', 'A-10028'],
+      [28, 'Сортировочный центр-3', 'Качество уборки', 'Нарушения по чистоте санузлов', 'A-10029'],
+      [30, 'Фулфилмент-1', 'Невыход на работу', 'Проблема с закрытием смены', 'A-10030'],
+      [31, 'Фулфилмент-2', 'Менеджер не посещал объект более 7 дней', 'Контроль отсутствует 11 дней', 'A-10031'],
+      [33, 'Фулфилмент-3', 'Невыход на работу', 'Не укомплектована утренняя смена', 'A-10032'],
+      [35, 'Фулфилмент-4', 'Качество уборки', 'Следы грязи в производственной зоне', 'A-10033'],
+      [40, 'Фулфилмент-5', 'Качество уборки', 'Периодическая уборка с нарушениями', 'A-10034'],
+      [42, 'Сортировочный центр-1', 'Менеджер не посещал объект более 7 дней', 'Нет визита 8+ дней', 'A-10035'],
+      [45, 'Сортировочный центр-2', 'Качество уборки', 'Загрязнение в зоне приема', 'A-10036'],
+      [50, 'Фулфилмент-6', 'Невыход на работу', 'Не вышел ключевой сотрудник', 'A-10037'],
+      [55, 'Фулфилмент-2', 'Качество уборки', 'Нарушен график генеральной уборки', 'A-10038']
+    ];
+
+    return base.map(([offset, object, category, comment, auditNumber]) => ({
+      date: makeDateOffset(offset),
+      object,
+      category,
+      comment,
+      auditNumber
+    }));
+  }
+
+  function findField(row, candidates) {
+    const entries = Object.entries(row || {});
+    for (const candidate of candidates) {
+      const normalizedCandidate = U.normalizeKey(candidate);
+      const found = entries.find(([key]) => U.normalizeKey(key) === normalizedCandidate);
+      if (found) return found[1];
+    }
+    return '';
+  }
+
+  function normalizeRow(raw) {
+    const date = U.toIsoDate(findField(raw, ['Дата', 'date', 'Date']));
+    const object = String(findField(raw, ['Объект', 'object', 'Object']) || '').trim();
+    const categoryRaw = String(findField(raw, ['Категория', 'category', 'Category']) || '').trim();
+    const category = U.incidentTypeFromCategory(categoryRaw);
+    const comment = String(findField(raw, ['Комментарий', 'comment', 'Comment']) || '').trim();
+    const auditNumber = String(findField(raw, ['Номер проверки', 'auditNumber', 'Audit number', 'AuditNumber']) || '').trim();
+
+    if (!date || !object || !category) return null;
+
+    return {
+      date,
+      object,
+      category,
+      comment,
+      auditNumber
+    };
+  }
+
+  function parseCsvRows(csvText) {
+    const parsed = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false
+    });
+
+    if (parsed.errors && parsed.errors.length) {
+      const fatal = parsed.errors.find(err => err.fatal);
+      if (fatal) throw new Error(fatal.message || 'CSV parse error');
+    }
+
+    return (parsed.data || []).map(normalizeRow).filter(Boolean);
+  }
+
+  async function fetchFromSheet(url) {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch CSV: ${response.status}`);
+    }
+    const text = await response.text();
+    return parseCsvRows(text);
+  }
+
+  function saveCache(rows, source) {
+    localStorage.setItem(STORAGE_KEYS.cachedRows, JSON.stringify(rows));
+    localStorage.setItem(STORAGE_KEYS.cachedSource, source || '');
+    localStorage.setItem(STORAGE_KEYS.lastSync, new Date().toISOString());
+  }
+
+  function loadCache() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.cachedRows);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data)) return null;
+      return data.filter(row => row && row.date && row.object && row.category);
+    } catch {
+      return null;
+    }
+  }
+
+  function getSavedSheetUrl() {
+    return localStorage.getItem(STORAGE_KEYS.sheetUrl) || '';
+  }
+
+  function setSavedSheetUrl(url) {
+    if (url) localStorage.setItem(STORAGE_KEYS.sheetUrl, url);
+    else localStorage.removeItem(STORAGE_KEYS.sheetUrl);
+  }
+
+  function getLastSync() {
+    return localStorage.getItem(STORAGE_KEYS.lastSync) || '';
+  }
+
+  async function loadIncidents(sourceUrl) {
+    const url = sourceUrl || getSavedSheetUrl();
+
+    if (url) {
+      try {
+        const rows = await fetchFromSheet(url);
+        rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.object.localeCompare(b.object, 'ru')));
+        saveCache(rows, url);
+        return { rows, source: 'google-sheet', url };
+      } catch (error) {
+        const cached = loadCache();
+        if (cached && cached.length) {
+          return { rows: cached, source: 'cache', url };
+        }
+        return { rows: buildDemoRows(), source: 'demo-fallback', url, error };
+      }
+    }
+
+    const cached = loadCache();
+    if (cached && cached.length) {
+      return { rows: cached, source: 'cache', url: '' };
+    }
+
+    return { rows: buildDemoRows(), source: 'demo', url: '' };
+  }
+
+  window.IncidentDataService = {
+    STORAGE_KEYS,
+    buildDemoRows,
+    parseCsvRows,
+    loadIncidents,
+    saveCache,
+    loadCache,
+    getSavedSheetUrl,
+    setSavedSheetUrl,
+    getLastSync
+  };
+})();
+
+js/analytics.js
+
+(function () {
+  const U = window.IncidentUtils;
+
+  function matchesSearch(row, search) {
+    if (!search) return true;
+    const haystack = [
+      row.object,
+      row.category,
+      row.comment,
+      row.auditNumber,
+      row.date
+    ].map(U.normalizeText).join(' | ');
+    return haystack.includes(search);
+  }
+
+  function matchesObjectFilter(row, objectQuery) {
+    if (!objectQuery) return true;
+    return U.normalizeText(row.object).includes(objectQuery);
+  }
+
+  function matchesTypeFilter(row, selectedTypes) {
+    if (!selectedTypes.length || selectedTypes.includes('all')) return true;
+    return selectedTypes.includes(row.category);
+  }
+
+  function filterByBaseCriteria(rows, state, rangeOverride) {
+    const period = rangeOverride || state.period;
+    const search = U.normalizeText(state.search);
+    const objectQuery = U.normalizeText(state.objectQuery);
+    const selectedTypes = state.typeFilters || [];
+
+    return rows.filter(row =>
+      U.isoInRange(row.date, period.startIso, period.endIso) &&
+      matchesSearch(row, search) &&
+      matchesObjectFilter(row, objectQuery) &&
+      matchesTypeFilter(row, selectedTypes)
+    );
+  }
+
+  function summarizeByObject(rows) {
+    const map = new Map();
+
+    for (const row of rows) {
+      const key = row.object;
+      if (!map.has(key)) {
+        map.set(key, {
+          object: key,
+          type1: 0,
+          type2: 0,
+          type3: 0,
+          total: 0
+        });
+      }
+      const item = map.get(key);
+      if (row.category === U.TYPES[0]) item.type1 += 1;
+      if (row.category === U.TYPES[1]) item.type2 += 1;
+      if (row.category === U.TYPES[2]) item.type3 += 1;
+      item.total += 1;
+    }
+
+    return Array.from(map.values()).map(item => ({
+      ...item,
+      risk: U.riskLevel(item.total)
+    }));
+  }
+
+  function sortObjectRows(rows, sort) {
+    const dir = sort.direction === 'asc' ? 1 : -1;
+    const key = sort.key;
+
+    return [...rows].sort((a, b) => {
+      let av = a[key];
+      let bv = b[key];
+
+      if (key === 'object') {
+        av = U.normalizeText(av);
+        bv = U.normalizeText(bv);
+        return av.localeCompare(bv, 'ru') * dir;
+      }
+
+      return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+    });
+  }
+
+  function computeKpis(rows, periodRows, previousRows) {
+    const counts = {
+      total: periodRows.length,
+      type1: periodRows.filter(r => r.category === U.TYPES[0]).length,
+      type2: periodRows.filter(r => r.category === U.TYPES[1]).length,
+      type3: periodRows.filter(r => r.category === U.TYPES[2]).length
+    };
+
+    const prev = previousRows.length;
+    const trendDelta = counts.total - prev;
+    const trendPct = prev === 0 ? (counts.total === 0 ? 0 : 100) : Math.round((trendDelta / prev) * 100);
+
+    return {
+      total: counts.total,
+      type1: counts.type1,
+      type2: counts.type2,
+      type3: counts.type3,
+      trendDelta,
+      trendPct
+    };
+  }
+
+  function groupByDate(rows, startIso, endIso) {
+    const map = new Map();
+    const start = U.dateFromIso(startIso);
+    const end = U.dateFromIso(endIso);
+    if (!start || !end) return { labels: [], values: [] };
+
+    for (let d = new Date(start); d <= end; d = U.addDays(d, 1)) {
+      const iso = U.toIsoDate(d);
+      map.set(iso, 0);
+    }
+
+    rows.forEach(row => {
+      if (map.has(row.date)) map.set(row.date, map.get(row.date) + 1);
+    });
+
+    const labels = Array.from(map.keys()).map(U.getDateLabelFromIso);
+    const values = Array.from(map.values());
+    return { labels, values };
+  }
+
+  function groupByWeek(rows) {
+    const map = new Map();
+    for (const row of rows) {
+      const key = U.getWeekKey(row.date);
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+
+    const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return {
+      labels: entries.map(([key]) => {
+        const start = U.dateFromIso(key);
+        const end = U.addDays(start, 6);
+        return `${U.formatDateShort(key)}–${U.formatDateShort(U.toIsoDate(end))}`;
+      }),
+      values: entries.map(([, value]) => value)
+    };
+  }
+
+  function groupByMonth(rows) {
+    const map = new Map();
+    for (const row of rows) {
+      const key = U.getMonthKey(row.date);
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return {
+      labels: entries.map(([key]) => U.getMonthLabel(key)),
+      values: entries.map(([, value]) => value)
+    };
+  }
+
+  function distributionByType(rows) {
+    const counts = {
+      [U.TYPES[0]]: 0,
+      [U.TYPES[1]]: 0,
+      [U.TYPES[2]]: 0
+    };
+    for (const row of rows) counts[row.category] += 1;
+    return {
+      labels: U.TYPES.map(U.typeShortName),
+      values: U.TYPES.map(type => counts[type])
+    };
+  }
+
+  function topObjects(rows, limit = 10) {
+    return summarizeByObject(rows)
+      .sort((a, b) => b.total - a.total || a.object.localeCompare(b.object, 'ru'))
+      .slice(0, limit);
+  }
+
+  function getRiskFilteredRows(baseRows, selectedRisks) {
+    if (!selectedRisks || !selectedRisks.length || selectedRisks.includes('all')) return baseRows;
+    const summary = summarizeByObject(baseRows);
+    const accepted = new Set(summary.filter(item => selectedRisks.includes(item.risk.key)).map(item => item.object));
+    return baseRows.filter(row => accepted.has(row.object));
+  }
+
+  function buildAnalytics(rows, state) {
+    const periodRows = filterByBaseCriteria(rows, state, state.period);
+    const riskFilteredRows = getRiskFilteredRows(periodRows, state.riskFilters);
+
+    const prevRange = U.previousRange(state.period.startIso, state.period.endIso);
+    const previousRows = prevRange ? filterByBaseCriteria(rows, state, prevRange) : [];
+
+    const filteredRows = riskFilteredRows;
+    const objectSummary = summarizeByObject(filteredRows);
+    const sortedSummary = sortObjectRows(objectSummary, state.sort);
+
+    const kpis = computeKpis(rows, filteredRows, previousRows);
+    const daily = groupByDate(filteredRows, state.period.startIso, state.period.endIso);
+    const weekly = groupByWeek(filteredRows);
+    const monthly = groupByMonth(filteredRows);
+    const distribution = distributionByType(filteredRows);
+    const top = topObjects(filteredRows, 10);
+
+    return {
+      periodRows,
+      previousRows,
+      filteredRows,
+      objectSummary: sortedSummary,
+      kpis,
+      charts: {
+        daily,
+        weekly,
+        monthly,
+        distribution,
+        top
+      }
+    };
+  }
+
+  function sortRows(rows, sort) {
+    const dir = sort.direction === 'asc' ? 1 : -1;
+    const key = sort.key;
+
+    const comparator = (a, b) => {
+      if (key === 'object') {
+        return a.object.localeCompare(b.object, 'ru') * dir;
+      }
+      if (key === 'type1' || key === 'type2' || key === 'type3' || key === 'total') {
+        return ((a[key] || 0) - (b[key] || 0)) * dir;
+      }
+      return 0;
+    };
+
+    return [...rows].sort(comparator);
+  }
+
+  window.IncidentAnalytics = {
+    filterByBaseCriteria,
+    summarizeByObject,
+    sortObjectRows,
+    computeKpis,
+    groupByDate,
+    groupByWeek,
+    groupByMonth,
+    distributionByType,
+    topObjects,
+    getRiskFilteredRows,
+    buildAnalytics,
+    sortRows
+  };
+})();
+
+js/charts.js
+
+(function () {
+  const U = window.IncidentUtils;
+
+  function baseOptions() {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 280
+      },
+      plugins: {
+        legend: {
+          labels: {
+            usePointStyle: true,
+            boxWidth: 10,
+            boxHeight: 10
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,.96)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          padding: 12,
+          cornerRadius: 10
+        }
+      }
+    };
+  }
+
+  function destroyChart(chart) {
+    if (chart && typeof chart.destroy === 'function') chart.destroy();
+  }
+
+  function buildLineOrBar(ctx, type, labels, values, label, color, chartState) {
+    destroyChart(chartState.chart);
+    chartState.chart = new Chart(ctx, {
+      type,
+      data: {
+        labels,
+        datasets: [{
+          label,
+          data: values,
+          borderColor: color,
+          backgroundColor: color,
+          fill: type === 'line' ? false : true,
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: type === 'line' ? 3 : 0,
+          pointHoverRadius: 4
+        }]
+      },
+      options: {
+        ...baseOptions(),
+        scales: {
+          x: {
+            grid: { color: 'rgba(100,116,139,.10)' },
+            ticks: { color: '#64748b', maxRotation: 0, autoSkip: true }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(100,116,139,.10)' },
+            ticks: { color: '#64748b', precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  function buildDoughnut(ctx, labels, values, chartState) {
+    destroyChart(chartState.chart);
+    chartState.chart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: ['#16a34a', '#d97706', '#dc2626'],
+          borderColor: '#fff',
+          borderWidth: 2,
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        ...baseOptions(),
+        cutout: '62%',
+        plugins: {
+          ...baseOptions().plugins,
+          legend: {
+            position: 'bottom',
+            labels: { usePointStyle: true, padding: 16 }
+          }
+        }
+      }
+    });
+  }
+
+  function buildHorizontalBar(ctx, labels, values, chartState) {
+    destroyChart(chartState.chart);
+    chartState.chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Incidents',
+          data: values,
+          backgroundColor: '#0b5fff',
+          borderColor: '#0b5fff',
+          borderRadius: 10,
+          barThickness: 18
+        }]
+      },
+      options: {
+        ...baseOptions(),
+        indexAxis: 'y',
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: 'rgba(100,116,139,.10)' },
+            ticks: { color: '#64748b', precision: 0 }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#334155' }
+          }
+        }
+      }
+    });
+  }
+
+  function renderCharts(viewModel, appState) {
+    const dailyCtx = document.getElementById('dailyChart');
+    const weeklyCtx = document.getElementById('weeklyChart');
+    const monthlyCtx = document.getElementById('monthlyChart');
+    const distributionCtx = document.getElementById('distributionChart');
+    const objectsCtx = document.getElementById('objectsChart');
+
+    if (!appState.charts) appState.charts = {};
+    if (!appState.charts.daily) appState.charts.daily = {};
+    if (!appState.charts.weekly) appState.charts.weekly = {};
+    if (!appState.charts.monthly) appState.charts.monthly = {};
+    if (!appState.charts.distribution) appState.charts.distribution = {};
+    if (!appState.charts.objects) appState.charts.objects = {};
+
+    buildLineOrBar(dailyCtx, 'bar', viewModel.charts.daily.labels, viewModel.charts.daily.values, 'Daily incidents', '#0b5fff', appState.charts.daily);
+    buildLineOrBar(weeklyCtx, 'bar', viewModel.charts.weekly.labels, viewModel.charts.weekly.values, 'Weekly incidents', '#16a34a', appState.charts.weekly);
+    buildLineOrBar(monthlyCtx, 'bar', viewModel.charts.monthly.labels, viewModel.charts.monthly.values, 'Monthly incidents', '#d97706', appState.charts.monthly);
+    buildDoughnut(distributionCtx, viewModel.charts.distribution.labels, viewModel.charts.distribution.values, appState.charts.distribution);
+    buildHorizontalBar(objectsCtx, viewModel.charts.top.map(x => x.object), viewModel.charts.top.map(x => x.total), appState.charts.objects);
+  }
+
+  window.IncidentCharts = {
+    renderCharts,
+    destroyChart
+  };
+})();
+
+js/export.js
+
+(function () {
+  const U = window.IncidentUtils;
+
+  function filtersToLines(state) {
+    return [
+      `Search: ${state.search || 'All'}`,
+      `Object: ${state.objectQuery || 'All'}`,
+      `Period: ${state.period.startIso} — ${state.period.endIso}`,
+      `Incident types: ${(state.typeFilters && state.typeFilters.length && !state.typeFilters.includes('all')) ? state.typeFilters.map(U.typeShortName).join(', ') : 'All'}`,
+      `Risk: ${(state.riskFilters && state.riskFilters.length && !state.riskFilters.includes('all')) ? state.riskFilters.map(x => x[0].toUpperCase() + x.slice(1)).join(', ') : 'All'}`
+    ];
+  }
+
+  function buildWorkbook(viewModel, state) {
+    const wb = XLSX.utils.book_new();
+
+    const summaryRows = [
+      ['Filter', 'Value'],
+      ...filtersToLines(state).map(line => line.split(': ').length > 1 ? line.split(': ') : [line, '']),
+      [],
+      ['KPI', 'Value'],
+      ['Total incidents', viewModel.kpis.total],
+      ['Невыход', viewModel.kpis.type1],
+      ['>7 дней', viewModel.kpis.type2],
+      ['Качество', viewModel.kpis.type3],
+      ['Trend delta', viewModel.kpis.trendDelta],
+      ['Trend pct', `${viewModel.kpis.trendPct}%`]
+    ];
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    const objectsSheet = XLSX.utils.json_to_sheet(viewModel.objectSummary.map(item => ({
+      Object: item.object,
+      'Невыход': item.type1,
+      '>7 дней': item.type2,
+      'Качество': item.type3,
+      Total: item.total,
+      Risk: item.risk.label
+    })));
+    XLSX.utils.book_append_sheet(wb, objectsSheet, 'Objects');
+
+    const incidentsSheet = XLSX.utils.json_to_sheet(viewModel.filteredRows.map(row => ({
+      Date: row.date,
+      Object: row.object,
+      Category: row.category,
+      Comment: row.comment,
+      AuditNumber: row.auditNumber
+    })));
+    XLSX.utils.book_append_sheet(wb, incidentsSheet, 'Incidents');
+
+    return wb;
+  }
+
+  function exportExcel(viewModel, state) {
+    const wb = buildWorkbook(viewModel, state);
+    const filename = `incident-analytics-${state.period.startIso}-to-${state.period.endIso}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  }
+
+  function drawWrappedText(doc, text, x, y, width, fontSize, color) {
+    doc.setFontSize(fontSize);
+    doc.setTextColor(color || 15);
+    const lines = doc.splitTextToSize(String(text || ''), width);
+    doc.text(lines, x, y);
+    return lines.length * (fontSize * 0.45) + 2;
+  }
+
+  function drawTable(doc, columns, rows, options) {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = options.margin || 16;
+    const widths = options.widths;
+    const rowHeight = options.rowHeight || 10;
+    let y = options.startY || 20;
+
+    const renderHeader = () => {
+      doc.setFillColor(248, 251, 255);
+      doc.setDrawColor(217, 226, 242);
+      doc.setLineWidth(0.4);
+      doc.rect(margin, y - 6, pageWidth - margin * 2, rowHeight + 4, 'FD');
+
+      let x = margin + 3;
+      doc.setFontSize(9);
+      doc.setTextColor(15);
+      columns.forEach((col, i) => {
+        const w = widths[i];
+        doc.text(String(col.title), x, y + 1);
+        x += w;
+      });
+      y += rowHeight;
+    };
+
+    renderHeader();
+
+    rows.forEach((row, idx) => {
+      const contentHeight = row.cells.reduce((max, cell, i) => {
+        const split = doc.splitTextToSize(String(cell ?? ''), widths[i] - 6);
+        return Math.max(max, split.length * 4.2);
+      }, rowHeight);
+
+      if (y + contentHeight + 10 > pageHeight - margin) {
+        doc.addPage();
+        y = margin + 10;
+        renderHeader();
+      }
+
+      doc.setDrawColor(235, 242, 250);
+      doc.setLineWidth(0.3);
+      doc.rect(margin, y - 4, pageWidth - margin * 2, contentHeight + 5, 'S');
+
+      let x = margin + 3;
+      row.cells.forEach((cell, i) => {
+        const text = String(cell ?? '');
+        const split = doc.splitTextToSize(text, widths[i] - 6);
+        doc.text(split, x, y);
+        x += widths[i];
+      });
+
+      y += contentHeight + 6;
+    });
+  }
+
+  function exportPDF(viewModel, state) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(11, 95, 255);
+    doc.text('Incident Analytics Dashboard', 14, y);
+
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    y += drawWrappedText(doc, `Period: ${state.period.startIso} — ${state.period.endIso}`, 14, y + 1, pageWidth - 28, 10, 60);
+    y += drawWrappedText(doc, `Search: ${state.search || 'All'} | Object: ${state.objectQuery || 'All'} | Types: ${(state.typeFilters && state.typeFilters.length && !state.typeFilters.includes('all')) ? state.typeFilters.map(U.typeShortName).join(', ') : 'All'} | Risk: ${(state.riskFilters && state.riskFilters.length && !state.riskFilters.includes('all')) ? state.riskFilters.map(x => x[0].toUpperCase() + x.slice(1)).join(', ') : 'All'}`, 14, y + 1, pageWidth - 28, 10, 60);
+    y += 2;
+
+    const kpiLine = `Total: ${viewModel.kpis.total} | Невыход: ${viewModel.kpis.type1} | >7 дней: ${viewModel.kpis.type2} | Качество: ${viewModel.kpis.type3} | Trend: ${viewModel.kpis.trendDelta >= 0 ? '+' : ''}${viewModel.kpis.trendDelta} (${viewModel.kpis.trendPct}%)`;
+    y += drawWrappedText(doc, kpiLine, 14, y + 1, pageWidth - 28, 10, 15);
+    y += 4;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(15);
+    doc.text('Objects', 14, y);
+    y += 4;
+
+    drawTable(
+      doc,
+      [
+        { title: 'Object' },
+        { title: 'Невыход' },
+        { title: '>7 дней' },
+        { title: 'Качество' },
+        { title: 'Total' },
+        { title: 'Risk' }
+      ],
+      viewModel.objectSummary.map(item => ({
+        cells: [item.object, item.type1, item.type2, item.type3, item.total, item.risk.label]
+      })),
+      {
+        startY: y + 4,
+        widths: [86, 26, 26, 26, 24, 20],
+        rowHeight: 9,
+        margin: 14
+      }
+    );
+
+    const incidentsStartPage = doc.getNumberOfPages();
+    if (viewModel.filteredRows.length) {
+      doc.addPage();
+      y = 16;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(15);
+      doc.text('Incidents', 14, y);
+      y += 4;
+
+      drawTable(
+        doc,
+        [
+          { title: 'Date' },
+          { title: 'Object' },
+          { title: 'Incident type' },
+          { title: 'Comment' },
+          { title: 'Audit number' }
+        ],
+        viewModel.filteredRows.map(row => ({
+          cells: [U.formatDateShort(row.date), row.object, row.category, row.comment, row.auditNumber]
+        })),
+        {
+          startY: y + 4,
+          widths: [26, 58, 62, 106, 30],
+          rowHeight: 9,
+          margin: 14
+        }
+      );
+    }
+
+    const filename = `incident-analytics-${state.period.startIso}-to-${state.period.endIso}.pdf`;
+    doc.save(filename);
+  }
+
+  window.IncidentExport = {
+    exportExcel,
+    exportPDF
+  };
+})();
+
+js/ui.js
+
+(function () {
+  const U = window.IncidentUtils;
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  const dom = {
+    searchInput: null,
+    objectInput: null,
+    objectsList: null,
+    periodPresets: null,
+    customDates: null,
+    startDate: null,
+    endDate: null,
+    typeFilters: null,
+    riskFilters: null,
+    kpiGrid: null,
+    tableBody: null,
+    tableMeta: null,
+    paginationInfo: null,
+    pageSize: null,
+    prevPage: null,
+    nextPage: null,
+    detailsModal: null,
+    detailsBody: null,
+    modalTitle: null,
+    modalSubtitle: null,
+    detailsSummary: null,
+    sourceModal: null,
+    sheetUrlInput: null,
+    btnRefresh: null,
+    btnExportExcel: null,
+    btnExportPDF: null,
+    btnSource: null,
+    btnSaveSource: null,
+    btnClearSource: null,
+    loadingLayer: null,
+    loadingText: null,
+    toast: null
+  };
+
+  function initDom() {
+    Object.keys(dom).forEach(key => {
+      dom[key] = byId({
+        searchInput: 'searchInput',
+        objectInput: 'objectInput',
+        objectsList: 'objectsList',
+        periodPresets: 'periodPresets',
+        customDates: 'customDates',
+        startDate: 'startDate',
+        endDate: 'endDate',
+        typeFilters: 'typeFilters',
+        riskFilters: 'riskFilters',
+        kpiGrid: 'kpiGrid',
+        tableBody: 'tableBody',
+        tableMeta: 'tableMeta',
+        paginationInfo: 'paginationInfo',
+        pageSize: 'pageSize',
+        prevPage: 'prevPage',
+        nextPage: 'nextPage',
+        detailsModal: 'detailsModal',
+        detailsBody: 'detailsBody',
+        modalTitle: 'modalTitle',
+        modalSubtitle: 'modalSubtitle',
+        detailsSummary: 'detailsSummary',
+        sourceModal: 'sourceModal',
+        sheetUrlInput: 'sheetUrlInput',
+        btnRefresh: 'btnRefresh',
+        btnExportExcel: 'btnExportExcel',
+        btnExportPDF: 'btnExportPDF',
+        btnSource: 'btnSource',
+        btnSaveSource: 'btnSaveSource',
+        btnClearSource: 'btnClearSource',
+        loadingLayer: 'loadingLayer',
+        loadingText: 'loadingText',
+        toast: 'toast'
+      }[key]);
+    });
+    return dom;
+  }
+
+  function setLoading(visible, text) {
+    if (dom.loadingLayer) dom.loadingLayer.classList.toggle('is-visible', !!visible);
+    if (dom.loadingText && text) dom.loadingText.textContent = text;
+  }
+
+  function showToast(message, type = 'info') {
+    const item = document.createElement('div');
+    item.className = `toast__item toast__item--${type}`;
+    item.textContent = message;
+    dom.toast.appendChild(item);
+    setTimeout(() => {
+      item.style.opacity = '0';
+      item.style.transform = 'translateY(8px)';
+      item.style.transition = 'opacity .2s ease, transform .2s ease';
+    }, 2500);
+    setTimeout(() => item.remove(), 2900);
+  }
+
+  function renderPresets(selectedPeriod) {
+    dom.periodPresets.querySelectorAll('.chip').forEach(btn => {
+      btn.classList.toggle('chip--active', btn.dataset.period === selectedPeriod);
+    });
+    dom.customDates.style.display = selectedPeriod === 'custom' ? 'flex' : 'none';
+  }
+
+  function renderTypes(selectedTypes) {
+    const allSelected = !selectedTypes.length || selectedTypes.includes('all');
+    dom.typeFilters.querySelectorAll('.chip').forEach(btn => {
+      const value = btn.dataset.type;
+      btn.classList.toggle('chip--active', allSelected ? value === 'all' : selectedTypes.includes(value));
+    });
+  }
+
+  function renderRisks(selectedRisks) {
+    const allSelected = !selectedRisks.length || selectedRisks.includes('all');
+    dom.riskFilters.querySelectorAll('.chip').forEach(btn => {
+      const value = btn.dataset.risk;
+      btn.classList.toggle('chip--active', allSelected ? value === 'all' : selectedRisks.includes(value));
+    });
+  }
+
+  function renderObjectsDatalist(objects) {
+    dom.objectsList.innerHTML = '';
+    const uniq = [...new Set(objects)].sort((a, b) => a.localeCompare(b, 'ru'));
+    uniq.forEach(object => {
+      const option = document.createElement('option');
+      option.value = object;
+      dom.objectsList.appendChild(option);
+    });
+  }
+
+  function renderKpis(kpis) {
+    const trendClass = kpis.trendDelta > 0 ? 'trend--up' : kpis.trendDelta < 0 ? 'trend--down' : 'trend--flat';
+    const trendSign = kpis.trendDelta > 0 ? '+' : '';
+    dom.kpiGrid.innerHTML = `
+      <article class="kpi">
+        <div class="kpi__label">Total incidents</div>
+        <div class="kpi__value">${U.formatNumber(kpis.total)}</div>
+        <div class="kpi__sub">Current period</div>
+      </article>
+      <article class="kpi">
+        <div class="kpi__label">Невыход</div>
+        <div class="kpi__value">${U.formatNumber(kpis.type1)}</div>
+        <div class="kpi__sub">Невыход на работу</div>
+      </article>
+      <article class="kpi">
+        <div class="kpi__label">&gt;7 дней</div>
+        <div class="kpi__value">${U.formatNumber(kpis.type2)}</div>
+        <div class="kpi__sub">Менеджер не посещал объект более 7 дней</div>
+      </article>
+      <article class="kpi">
+        <div class="kpi__label">Качество</div>
+        <div class="kpi__value">${U.formatNumber(kpis.type3)}</div>
+        <div class="kpi__sub">Качество уборки</div>
+      </article>
+      <article class="kpi">
+        <div class="kpi__label">Trend vs previous period</div>
+        <div class="kpi__value">${trendSign}${U.formatNumber(kpis.trendDelta)}</div>
+        <div class="kpi__trend ${trendClass}">${trendSign}${U.formatNumber(kpis.trendDelta)} (${kpis.trendPct}%)</div>
+        <div class="kpi__sub">Previous period comparison</div>
+      </article>
+    `;
+  }
+
+  function renderTable(tableRows, state) {
+    const pageSize = state.pageSize;
+    const total = tableRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    state.page = U.clamp(state.page, 1, totalPages);
+
+    const start = (state.page - 1) * pageSize;
+    const end = Math.min(start + pageSize, total);
+    const pageRows = tableRows.slice(start, end);
+
+    const sortIndicator = (key) => {
+      if (state.sort.key !== key) return '';
+      return state.sort.direction === 'asc' ? '▲' : '▼';
+    };
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      const key = th.dataset.sort;
+      th.querySelector('.sort-indicator').textContent = sortIndicator(key);
+    });
+
+    dom.tableBody.innerHTML = pageRows.map(row => `
+      <tr class="${row.risk.rowCls}" data-object="${U.escapeHtml(row.object)}">
+        <td>
+          <div class="object-cell">
+            <div class="object-name">${U.escapeHtml(row.object)}</div>
+            <span class="risk-pill ${row.risk.cls}">${row.risk.label}</span>
+          </div>
+        </td>
+        <td>${U.formatNumber(row.type1)}</td>
+        <td>${U.formatNumber(row.type2)}</td>
+        <td>${U.formatNumber(row.type3)}</td>
+        <td><strong>${U.formatNumber(row.total)}</strong></td>
+      </tr>
+    `).join('');
+
+    dom.tableMeta.textContent = `${U.formatNumber(total)} objects matched`;
+    dom.paginationInfo.textContent = total
+      ? `Showing ${U.formatNumber(start + 1)}–${U.formatNumber(end)} of ${U.formatNumber(total)}`
+      : 'No rows found';
+
+    dom.prevPage.disabled = state.page <= 1;
+    dom.nextPage.disabled = state.page >= totalPages;
+  }
+
+  function renderDetailsModal(objectName, rows, state) {
+    const sorted = [...rows].sort((a, b) => b.date.localeCompare(a.date));
+    const typeCount = {
+      type1: sorted.filter(r => r.category === U.TYPES[0]).length,
+      type2: sorted.filter(r => r.category === U.TYPES[1]).length,
+      type3: sorted.filter(r => r.category === U.TYPES[2]).length
+    };
+    const risk = U.riskLevel(sorted.length);
+
+    dom.modalTitle.textContent = objectName;
+    dom.modalSubtitle.textContent = `${sorted.length} incidents in current filters`;
+    dom.detailsSummary.innerHTML = `
+      <div class="details-summary__item">
+        <div class="details-summary__label">Total</div>
+        <div class="details-summary__value">${U.formatNumber(sorted.length)}</div>
+      </div>
+      <div class="details-summary__item">
+        <div class="details-summary__label">Невыход</div>
+        <div class="details-summary__value">${U.formatNumber(typeCount.type1)}</div>
+      </div>
+      <div class="details-summary__item">
+        <div class="details-summary__label">&gt;7 дней</div>
+        <div class="details-summary__value">${U.formatNumber(typeCount.type2)}</div>
+      </div>
+      <div class="details-summary__item">
+        <div class="details-summary__label">Качество</div>
+        <div class="details-summary__value">${U.formatNumber(typeCount.type3)}</div>
+      </div>
+    `;
+
+    dom.detailsBody.innerHTML = sorted.map(row => `
+      <tr>
+        <td>${U.formatDateShort(row.date)}</td>
+        <td>${U.escapeHtml(row.category)}</td>
+        <td>${U.escapeHtml(row.comment || '')}</td>
+        <td>${U.escapeHtml(row.auditNumber || '')}</td>
+      </tr>
+    `).join('');
+
+    openModal(dom.detailsModal);
+  }
+
+  function openModal(el) {
+    el.classList.add('is-open');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeModal(el) {
+    el.classList.remove('is-open');
+    el.setAttribute('aria-hidden', 'true');
+  }
+
+  function renderSourceModal(currentUrl) {
+    dom.sheetUrlInput.value = currentUrl || '';
+    openModal(dom.sourceModal);
+  }
+
+  function closeSourceModal() {
+    closeModal(dom.sourceModal);
+  }
+
+  function updateLastSync(text) {
+    const meta = document.querySelector('.topbar .brand__text p');
+    if (meta) meta.textContent = text;
+  }
+
+  function bindModalClose() {
+    document.querySelectorAll('[data-close-modal]').forEach(el => {
+      el.addEventListener('click', () => closeModal(dom.detailsModal));
+    });
+    document.querySelectorAll('[data-close-source]').forEach(el => {
+      el.addEventListener('click', () => closeSourceModal());
+    });
+  }
+
+  window.IncidentUI = {
+    dom,
+    initDom,
+    setLoading,
+    showToast,
+    renderPresets,
+    renderTypes,
+    renderRisks,
+    renderObjectsDatalist,
+    renderKpis,
+    renderTable,
+    renderDetailsModal,
+    renderSourceModal,
+    closeSourceModal,
+    openModal,
+    closeModal,
+    bindModalClose,
+    updateLastSync
+  };
+})();
+
+js/app.js
+
+(function () {
+  const U = window.IncidentUtils;
+  const Data = window.IncidentDataService;
+  const A = window.IncidentAnalytics;
+  const Charts = window.IncidentCharts;
+  const Export = window.IncidentExport;
+  const UI = window.IncidentUI;
+
+  const app = {
+    rows: [],
+    source: '',
+    sourceUrl: '',
+    filteredRows: [],
+    objectSummary: [],
+    kpis: { total: 0, type1: 0, type2: 0, type3: 0, trendDelta: 0, trendPct: 0 },
+    charts: {},
+    sort: { key: 'total', direction: 'desc' },
+    page: 1,
+    pageSize: 20,
+    search: '',
+    objectQuery: '',
+    periodPreset: 'month',
+    period: U.getPeriodRange('month'),
+    customStart: '',
+    customEnd: '',
+    typeFilters: ['all'],
+    riskFilters: ['all'],
+    lastRenderedAt: '',
+    autoUpdateTimer: null
+  };
+
+  function getStateForAnalytics() {
+    return {
+      search: app.search,
+      objectQuery: app.objectQuery,
+      period: app.period,
+      typeFilters: app.typeFilters,
+      riskFilters: app.riskFilters,
+      sort: app.sort
+    };
+  }
+
+  function updateView() {
+    if (!app.rows.length) {
+      UI.renderKpis({ total: 0, type1: 0, type2: 0, type3: 0, trendDelta: 0, trendPct: 0 });
+      UI.renderTable([], app);
+      return;
+    }
+
+    const vm = A.buildAnalytics(app.rows, getStateForAnalytics());
+    app.filteredRows = vm.filteredRows;
+    app.objectSummary = vm.objectSummary;
+    app.kpis = vm.kpis;
+
+    UI.renderKpis(vm.kpis);
+    UI.renderTable(vm.objectSummary, app);
+    Charts.renderCharts(vm, app);
+    UI.renderObjectsDatalist(app.rows.map(r => r.object));
+    UI.updateLastSync(`Last sync: ${Data.getLastSync() ? U.formatDateTime(Data.getLastSync()) : 'not synced yet'}`);
+
+    app.lastRenderedAt = new Date().toISOString();
+  }
+
+  function resetPagination() {
+    app.page = 1;
+  }
+
+  function setPeriodPreset(preset) {
+    app.periodPreset = preset;
+    if (preset === 'custom') {
+      const start = app.customStart ? U.dateFromIso(app.customStart) : U.startOfDay(U.addDays(new Date(), -29));
+      const end = app.customEnd ? U.dateFromIso(app.customEnd) : U.endOfDay(new Date());
+      app.period = U.getPeriodRange('custom', start, end);
+    } else {
+      app.period = U.getPeriodRange(preset);
+    }
+    UI.renderPresets(preset);
+    resetPagination();
+    updateView();
+  }
+
+  function setCustomPeriod() {
+    const start = app.customStart ? U.dateFromIso(app.customStart) : null;
+    const end = app.customEnd ? U.dateFromIso(app.customEnd) : null;
+    app.periodPreset = 'custom';
+    app.period = U.getPeriodRange('custom', start, end);
+    UI.renderPresets('custom');
+    resetPagination();
+    updateView();
+  }
+
+  function setTypeFilters(value) {
+    if (value === 'all') {
+      app.typeFilters = ['all'];
+    } else {
+      const current = new Set(app.typeFilters.filter(v => v !== 'all'));
+      if (current.has(value)) current.delete(value);
+      else current.add(value);
+      app.typeFilters = [...current];
+      if (!app.typeFilters.length) app.typeFilters = ['all'];
+    }
+    UI.renderTypes(app.typeFilters);
+    resetPagination();
+    updateView();
+  }
+
+  function setRiskFilters(value) {
+    if (value === 'all') {
+      app.riskFilters = ['all'];
+    } else {
+      const current = new Set(app.riskFilters.filter(v => v !== 'all'));
+      if (current.has(value)) current.delete(value);
+      else current.add(value);
+      app.riskFilters = [...current];
+      if (!app.riskFilters.length) app.riskFilters = ['all'];
+    }
+    UI.renderRisks(app.riskFilters);
+    resetPagination();
+    updateView();
+  }
+
+  function sortBy(key) {
+    if (app.sort.key === key) {
+      app.sort.direction = app.sort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      app.sort.key = key;
+      app.sort.direction = key === 'object' ? 'asc' : 'desc';
+    }
+    resetPagination();
+    updateView();
+  }
+
+  function openDetailsForObject(objectName) {
+    const rows = app.filteredRows.filter(row => row.object === objectName);
+    UI.renderDetailsModal(objectName, rows, app);
+  }
+
+  async function loadData(silent = false) {
+    if (!silent) UI.setLoading(true, 'Loading data…');
+
+    const url = Data.getSavedSheetUrl();
+    const result = await Data.loadIncidents(url);
+    app.rows = result.rows || [];
+    app.source = result.source;
+    app.sourceUrl = result.url || '';
+
+    if (!silent) UI.setLoading(false);
+    if (result.error) {
+      UI.showToast('Google Sheet unavailable. Demo/cache data loaded.', 'error');
+    } else {
+      UI.showToast(
+        result.source === 'google-sheet' ? 'Data loaded from Google Sheets' : result.source === 'cache' ? 'Data loaded from cache' : 'Demo data loaded',
+        'success'
+      );
+    }
+
+    updateView();
+  }
+
+  async function refreshData(silent = false) {
+    await loadData(silent);
+  }
+
+  function bindEvents() {
+    UI.dom.searchInput.addEventListener('input', U.debounce(() => {
+      app.search = UI.dom.searchInput.value.trim();
+      resetPagination();
+      updateView();
+    }, 180));
+
+    UI.dom.objectInput.addEventListener('input', U.debounce(() => {
+      app.objectQuery = UI.dom.objectInput.value.trim();
+      resetPagination();
+      updateView();
+    }, 180));
+
+    UI.dom.startDate.addEventListener('change', () => {
+      app.customStart = UI.dom.startDate.value || '';
+      if (app.periodPreset === 'custom') setCustomPeriod();
+    });
+
+    UI.dom.endDate.addEventListener('change', () => {
+      app.customEnd = UI.dom.endDate.value || '';
+      if (app.periodPreset === 'custom') setCustomPeriod();
+    });
+
+    UI.dom.periodPresets.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip[data-period]');
+      if (!btn) return;
+      setPeriodPreset(btn.dataset.period);
+    });
+
+    UI.dom.typeFilters.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip[data-type]');
+      if (!btn) return;
+      setTypeFilters(btn.dataset.type);
+    });
+
+    UI.dom.riskFilters.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip[data-risk]');
+      if (!btn) return;
+      setRiskFilters(btn.dataset.risk);
+    });
+
+    UI.dom.tableBody.addEventListener('click', (e) => {
+      const rowEl = e.target.closest('tr[data-object]');
+      if (!rowEl) return;
+      const objectName = rowEl.dataset.object;
+      openDetailsForObject(objectName);
+    });
+
+    document.querySelector('table thead').addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-sort]');
+      if (!th) return;
+      sortBy(th.dataset.sort);
+    });
+
+    UI.dom.prevPage.addEventListener('click', () => {
+      app.page = Math.max(1, app.page - 1);
+      updateView();
+    });
+
+    UI.dom.nextPage.addEventListener('click', () => {
+      const totalPages = Math.max(1, Math.ceil(app.objectSummary.length / app.pageSize));
+      app.page = Math.min(totalPages, app.page + 1);
+      updateView();
+    });
+
+    UI.dom.pageSize.addEventListener('change', () => {
+      app.pageSize = Number(UI.dom.pageSize.value) || 20;
+      resetPagination();
+      updateView();
+    });
+
+    UI.dom.btnRefresh.addEventListener('click', async () => {
+      UI.setLoading(true, 'Refreshing data…');
+      await refreshData(true);
+      UI.setLoading(false);
+      UI.showToast('Data refreshed', 'success');
+    });
+
+    UI.dom.btnExportExcel.addEventListener('click', () => {
+      Export.exportExcel({
+        filteredRows: app.filteredRows,
+        objectSummary: app.objectSummary,
+        kpis: app.kpis
+      }, app);
+    });
+
+    UI.dom.btnExportPDF.addEventListener('click', () => {
+      Export.exportPDF({
+        filteredRows: app.filteredRows,
+        objectSummary: app.objectSummary,
+        kpis: app.kpis
+      }, app);
+    });
+
+    UI.dom.btnSource.addEventListener('click', () => {
+      UI.renderSourceModal(Data.getSavedSheetUrl());
+    });
+
+    UI.dom.btnSaveSource.addEventListener('click', async () => {
+      const url = UI.dom.sheetUrlInput.value.trim();
+      if (!url) {
+        UI.showToast('CSV URL is required', 'error');
+        return;
+      }
+      Data.setSavedSheetUrl(url);
+      UI.closeSourceModal();
+      UI.setLoading(true, 'Loading Google Sheet…');
+      await refreshData(true);
+      UI.setLoading(false);
+      UI.showToast('Google Sheet source saved', 'success');
+    });
+
+    UI.dom.btnClearSource.addEventListener('click', async () => {
+      Data.setSavedSheetUrl('');
+      UI.closeSourceModal();
+      UI.setLoading(true, 'Loading demo data…');
+      await refreshData(true);
+      UI.setLoading(false);
+      UI.showToast('Demo data enabled', 'info');
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        UI.closeModal(UI.dom.detailsModal);
+        UI.closeModal(UI.dom.sourceModal);
+      }
+    });
+
+    document.querySelectorAll('[data-close-modal]').forEach(el => {
+      el.addEventListener('click', () => UI.closeModal(UI.dom.detailsModal));
+    });
+
+    document.querySelectorAll('[data-close-source]').forEach(el => {
+      el.addEventListener('click', () => UI.closeModal(UI.dom.sourceModal));
+    });
+  }
+
+  async function init() {
+    UI.initDom();
+    UI.bindModalClose();
+    bindEvents();
+    UI.renderPresets(app.periodPreset);
+    UI.renderTypes(app.typeFilters);
+    UI.renderRisks(app.riskFilters);
+    UI.dom.startDate.value = app.period.startIso;
+    UI.dom.endDate.value = app.period.endIso;
+    UI.dom.pageSize.value = String(app.pageSize);
+
+    UI.setLoading(true, 'Loading data…');
+    await loadData(true);
+    UI.setLoading(false);
+
+    app.autoUpdateTimer = setInterval(async () => {
+      UI.setLoading(true, 'Auto-updating…');
+      await refreshData(true);
+      UI.setLoading(false);
+      UI.showToast('Auto-updated from source', 'info');
+    }, 300000);
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+
+README.md
+
+# Incident Analytics Dashboard
+
+Static dashboard for incident analytics using Google Sheets CSV.
+
+## Files
+- `index.html`
+- `css/styles.css`
+- `js/*.js`
+- `assets/logo.svg`
+
+## Source
+Use the top-right **Источник** button to set the published Google Sheets CSV URL.
+
+## Run
+Open `index.html` directly in a browser or deploy to GitHub Pages.
